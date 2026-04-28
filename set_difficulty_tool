@@ -15,42 +15,39 @@ class LevelEditor:
         self.data = {}
 
         # ----------------------------
-        # UI Layout
+        # Top bar
         # ----------------------------
 
-        top_frame = tk.Frame(root)
-        top_frame.pack(fill="x", padx=10, pady=5)
+        top = tk.Frame(root)
+        top.pack(fill="x", padx=10, pady=5)
 
-        tk.Button(
-            top_frame,
-            text="Load JSON Files",
-            command=self.load_files
-        ).pack(side="left")
+        tk.Button(top, text="Load JSON Files", command=self.load_files).pack(side="left")
+        tk.Button(top, text="Save All", command=self.save_all).pack(side="left", padx=10)
 
-        tk.Button(
-            top_frame,
-            text="Save All",
-            command=self.save_all
-        ).pack(side="left", padx=10)
+        # ----------------------------
+        # Scrollable frame for rows
+        # ----------------------------
 
-        # table
-        self.tree = ttk.Treeview(
-            root,
-            columns=("file", "difficulty"),
-            show="headings",
-            height=20
+        container = tk.Frame(root)
+        container.pack(fill="both", expand=True)
+
+        self.canvas = tk.Canvas(container)
+        self.scrollbar = tk.Scrollbar(container, orient="vertical", command=self.canvas.yview)
+
+        self.scroll_frame = tk.Frame(self.canvas)
+
+        self.scroll_frame.bind(
+            "<Configure>",
+            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
         )
 
-        self.tree.heading("file", text="File")
-        self.tree.heading("difficulty", text="Difficulty")
+        self.canvas.create_window((0, 0), window=self.scroll_frame, anchor="nw")
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
 
-        self.tree.column("file", width=400)
-        self.tree.column("difficulty", width=120)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
 
-        self.tree.pack(fill="both", expand=True, padx=10, pady=10)
-
-        # editing
-        self.tree.bind("<Double-1>", self.edit_cell)
+        self.rows = {}
 
     # ----------------------------
     # Load files
@@ -68,97 +65,76 @@ class LevelEditor:
         self.files = list(paths)
         self.data = {}
 
-        self.tree.delete(*self.tree.get_children())
+        # clear UI
+        for widget in self.scroll_frame.winfo_children():
+            widget.destroy()
+
+        self.rows = {}
 
         for path in self.files:
 
             with open(path, "r") as f:
                 content = json.load(f)
 
-            # ensure difficulty exists
             if "difficulty" not in content:
                 content["difficulty"] = 0
 
             self.data[path] = content
 
-            self.tree.insert(
-                "",
-                "end",
-                values=(os.path.basename(path), content["difficulty"])
-            )
+            self.create_row(path, content["difficulty"])
 
     # ----------------------------
-    # Inline edit
+    # Create row with real input
     # ----------------------------
 
-    def edit_cell(self, event):
+    def create_row(self, path, difficulty):
 
-        item = self.tree.selection()[0]
-        col = self.tree.identify_column(event.x)
+        row = tk.Frame(self.scroll_frame)
+        row.pack(fill="x", padx=5, pady=2)
 
-        if col != "#2":  # difficulty column only
-            return
+        label = tk.Label(
+            row,
+            text=os.path.basename(path),
+            width=60,
+            anchor="w"
+        )
+        label.pack(side="left")
 
-        x, y, width, height = self.tree.bbox(item, col)
+        entry = tk.Entry(row, width=10)
+        entry.insert(0, str(difficulty))
+        entry.pack(side="right", padx=10)
 
-        entry = tk.Entry(self.root)
-        entry.place(x=int(x) + self.tree.winfo_rootx(),
-                    y=int(y) + self.tree.winfo_rooty(),
-                    width=int(width),
-                    height=int(height))
-
-        old_value = self.tree.item(item, "values")[1]
-        entry.insert(0, old_value)
-        entry.focus()
-
-        def save_edit(event=None):
-
-            new_value = entry.get()
-
-            try:
-                new_value = int(new_value)
-            except:
-                messagebox.showerror("Error", "Difficulty must be a number")
-                entry.destroy()
-                return
-
-            filename = self.tree.item(item, "values")[0]
-
-            # update UI
-            self.tree.item(item, values=(filename, new_value))
-
-            # update internal data
-            for path in self.files:
-
-                if os.path.basename(path) == filename:
-
-                    self.data[path]["difficulty"] = new_value
-
-            entry.destroy()
-
-        entry.bind("<Return>", save_edit)
-        entry.bind("<FocusOut>", save_edit)
+        self.rows[path] = entry
 
     # ----------------------------
-    # Save back to JSON
+    # Save all
     # ----------------------------
 
     def save_all(self):
 
-        for path, content in self.data.items():
+        for path, entry in self.rows.items():
 
-            # ensure difficulty exists
-            if "difficulty" not in content:
-                content["difficulty"] = 0
+            value = entry.get().strip()
+
+            try:
+                value = int(value)
+            except:
+                messagebox.showerror(
+                    "Invalid input",
+                    f"Difficulty must be a number in {os.path.basename(path)}"
+                )
+                return
+
+            self.data[path]["difficulty"] = value
 
             with open(path, "w") as f:
-                json.dump(content, f, indent=2)
+                json.dump(self.data[path], f, indent=2)
 
         messagebox.showinfo("Saved", "All files updated successfully!")
 
 
 # ----------------------------
-# Run app
+# Run
 # ----------------------------
 
 if __name__ == "__main__":

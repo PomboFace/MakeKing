@@ -126,5 +126,6 @@
       "element": "water",
       "direction": null
     }
-  ]
+  ],
+  "difficulty": 5
 }
