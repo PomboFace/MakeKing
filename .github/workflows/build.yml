@@ -1,0 +1,46 @@
+name: Build MakeKing
+
+on:
+  workflow_dispatch:
+    inputs:
+      preset:
+        description: "Preset folder"
+        required: true
+        default: "default"
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: pip install pyinstaller pygame
+
+      - name: Build
+        shell: cmd
+        run: |
+          pyinstaller ^
+          --noconsole ^
+          --name MakeKing ^
+          --icon=sprites\icon.ico ^
+          --add-data "sprites;sprites" ^
+          --noupx ^
+          MakeKing.py
+
+      - name: Copy selected preset
+        shell: cmd
+        run: |
+          xcopy "presets\${{ github.event.inputs.preset }}" "dist\MakeKing\presets" /E /I /Y
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: MakeKing-Windows
+          path: dist/MakeKing
