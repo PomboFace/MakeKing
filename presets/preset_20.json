@@ -1,6 +1,18 @@
 {
   "board": [
     [
+      null,
+      null,
+      {
+        "kind": "enemy",
+        "element": "rock",
+        "immovable": true,
+        "active": false
+      },
+      null
+    ],
+    [
+      null,
       {
         "kind": "symbol",
         "element": "water",
@@ -8,32 +20,9 @@
         "active": false
       },
       null,
-      null,
-      null
-    ],
-    [
-      null,
-      null,
       {
         "kind": "enemy",
-        "element": "water",
-        "immovable": false,
-        "active": false
-      },
-      null
-    ],
-    [
-      null,
-      {
-        "kind": "enemy",
-        "element": "fire",
-        "immovable": false,
-        "active": false
-      },
-      null,
-      {
-        "kind": "symbol",
-        "element": "wind",
+        "element": "rock",
         "immovable": true,
         "active": false
       }
@@ -41,12 +30,18 @@
     [
       null,
       null,
+      null,
+      null
+    ],
+    [
+      null,
       {
-        "kind": "enemy",
-        "element": "fire",
-        "immovable": false,
+        "kind": "symbol",
+        "element": "wind",
+        "immovable": true,
         "active": false
       },
+      null,
       null
     ]
   ],
@@ -58,12 +53,38 @@
           0
         ],
         [
-          1,
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          -1,
+          2
+        ]
+      ],
+      "element": "water",
+      "direction": null
+    },
+    {
+      "pattern": [
+        [
+          0,
           0
         ],
         [
           0,
           1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          -1,
+          2
         ]
       ],
       "element": "fire",
@@ -76,12 +97,16 @@
           0
         ],
         [
-          1,
-          0
+          0,
+          1
         ],
         [
-          2,
-          0
+          0,
+          2
+        ],
+        [
+          1,
+          2
         ]
       ],
       "element": "water",
@@ -100,23 +125,10 @@
         [
           2,
           0
-        ]
-      ],
-      "element": "wind",
-      "direction": [
-        1,
-        0
-      ]
-    },
-    {
-      "pattern": [
-        [
-          0,
-          0
         ],
         [
           1,
-          0
+          1
         ]
       ],
       "element": "wind",
