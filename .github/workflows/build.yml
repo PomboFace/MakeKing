@@ -2,6 +2,12 @@ name: Build MakeKing
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -10,21 +16,25 @@ jobs:
         include:
           - os: windows-latest
             platform: windows
-            ext: .exe
-            icon: sprites/icon.ico
-            data_sep: ";"
+            zip_name: MakeKing-windows.zip
 
           - os: ubuntu-latest
             platform: linux
-            ext: ""
-            icon: sprites/icon.png
-            data_sep: ":"
+            zip_name: MakeKing-linux.zip
 
     runs-on: ${{ matrix.os }}
 
     steps:
+      # ============================
+      # CHECKOUT
+      # ============================
+
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      # ============================
+      # PYTHON
+      # ============================
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -117,7 +127,6 @@ jobs:
         if: matrix.platform == 'linux'
         run: |
           echo "Copying README files..."
-
           cp README_*.txt dist/MakeKing/ || true
 
       # ============================
@@ -138,75 +147,48 @@ jobs:
           cp -r presets dist/MakeKing/presets
 
       # ============================
-      # CREATE PY_VERSION
+      # ZIP WINDOWS
       # ============================
 
-      - name: Create py_version folder (Windows)
+      - name: Create ZIP (Windows)
         if: matrix.platform == 'windows'
-        shell: cmd
+        shell: powershell
         run: |
-          echo Creating py_version folder...
-          mkdir "dist\py_version"
+          Compress-Archive `
+            -Path 'dist\MakeKing' `
+            -DestinationPath 'dist\MakeKing-windows.zip' `
+            -Force
 
-          echo Copying MakeKing.py...
-          if exist "MakeKing.py" (
-              copy "MakeKing.py" "dist\py_version\"
-          )
+      # ============================
+      # ZIP LINUX
+      # ============================
 
-          echo Copying game_common.py...
-          if exist "game_common.py" (
-              copy "game_common.py" "dist\py_version\"
-          )
-
-          echo Copying sprite PNG files...
-          mkdir "dist\py_version\sprites"
-
-          for /R "sprites" %%F in (*.png) do (
-              copy "%%F" "dist\py_version\sprites\"
-          )
-
-          echo Copying presets folder...
-          xcopy "presets" "dist\py_version\presets" /E /I /Y >nul
-
-          echo Copying README files...
-          for %%F in (README_*.txt) do (
-              if exist "%%F" (
-                  copy "%%F" "dist\py_version\"
-              )
-          )
-
-      - name: Create py_version folder (Linux)
+      - name: Create ZIP (Linux)
         if: matrix.platform == 'linux'
         run: |
-          echo "Creating py_version folder..."
-
-          mkdir -p dist/py_version
-          mkdir -p dist/py_version/sprites
-
-          echo "Copying MakeKing.py..."
-          cp MakeKing.py dist/py_version/ || true
-
-          echo "Copying game_common.py..."
-          cp game_common.py dist/py_version/ || true
-
-          echo "Copying sprite PNG files..."
-          find sprites -name "*.png" -exec cp {} dist/py_version/sprites/ \;
-
-          echo "Copying presets folder..."
-          cp -r presets dist/py_version/presets
-
-          echo "Copying README files..."
-          cp README_*.txt dist/py_version/ || true
+          cd dist
+          zip -r MakeKing-linux.zip MakeKing
 
       # ============================
-      # UPLOAD ARTIFACTS
+      # UPLOAD ARTIFACT
       # ============================
 
-      - name: Upload artifact
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
           name: MakeKing-${{ matrix.platform }}
-          path: |
-            dist/*.zip
-            dist/MakeKing/**
-            dist/py_version/**
+          path: dist/${{ matrix.zip_name }}
+
+      # ============================
+      # RELEASE
+      # ============================
+
+      - name: Release build
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Build
+          files: dist/${{ matrix.zip_name }}
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
