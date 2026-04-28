@@ -5,7 +5,7 @@ a = Analysis(
     ['MakeKing.py'],
     pathex=[],
     binaries=[],
-    datas=[('sprites', 'sprites')],
+    datas=[('assets', 'assets')],
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},
@@ -33,7 +33,7 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     version='version.txt',
-    icon=['sprites\\icon.ico'],
+    icon=['assets\\sprites\\icon.ico'],
 )
 coll = COLLECT(
     exe,

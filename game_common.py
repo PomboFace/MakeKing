@@ -3,7 +3,7 @@ import json
 import os
 import sys
 
-PRESET_DIR = "presets"
+PRESET_DIR = "assets/presets"
 
 GRID_SIZE = 4
 CELL_SIZE = 90
@@ -84,7 +84,7 @@ def ensure_preset_dir():
 
 
 def get_preset_path(filename):
-    return os.path.join(ensure_preset_dir(), filename)
+    return ensure_preset_dir() + "/" + filename
 
 
 def save_json_preset(payload, name=None):
@@ -118,6 +118,20 @@ def get_preset_files():
     presets = [f for f in os.listdir(root) if f.lower().endswith(".json")]
     presets.sort(key=lambda f: os.path.getmtime(os.path.join(root, f)), reverse=True)
     return presets
+
+def preload_levels():
+    levels = []
+
+    for i in range(1, 99):
+        filename = f"preset_{i:02d}.json"
+        path = get_preset_path(filename)
+       
+        if not os.path.exists(path):
+            continue
+        name = f"Level {i:02d}"
+
+        levels.append((name, filename))
+    return levels
 
 
 def shape_choice_to_pattern(choice):

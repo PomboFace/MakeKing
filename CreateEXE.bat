@@ -8,12 +8,17 @@ rmdir /s /q build
 rmdir /s /q dist
 del MakeKing.spec
 
+rmdir /s /q __pycache__
+rmdir /s /q MakeKing.spec
+
 REM Build with PyInstaller (safer settings)
 pyinstaller ^
+--clean ^
+--noconfirm ^
 --noconsole ^
 --name MakeKing ^
---icon=sprites\icon.ico ^
---add-data "sprites;sprites" ^
+--icon=assets\sprites\icon.ico ^
+--add-data "assets;assets" ^
 --version-file version.txt ^
 --noupx ^
 MakeKing.py
@@ -24,20 +29,6 @@ IF %ERRORLEVEL% NEQ 0 (
     pause
     exit /b
 )
-
-REM Copy README files into build folder
-echo Copying README files...
-for %%F in (README_*.txt) do (
-    if exist "%%F" (
-        copy "%%F" "dist\MakeKing\"
-    )
-)
-
-REM Copy presets folder into build folder
-echo Copying presets folder...
-xcopy "presets" "dist\MakeKing\presets" /E /I /Y >nul
-
-
 REM make py_version folder
 echo Creating py_version folder...
 mkdir "dist\py_version"
@@ -54,31 +45,27 @@ if exist "game_common.py" (
     copy "game_common.py" "dist\py_version\"
 )
 
-REM Copy sprites folder into py_version folder (only copy png files)
-echo Copying sprite PNG files...
-mkdir "dist\py_version\sprites"
-
-for /R "sprites" %%F in (*.png) do (
-    copy "%%F" "dist\py_version\sprites\"
+REM Copy assets folder into py_version folder (PNG + presets etc.)
+echo Copying assets folder...
+if exist "assets" (
+    xcopy "assets" "dist\MakeKing\assets" /E /I /Y >nul
+    xcopy "assets" "dist\py_version\assets" /E /I /Y >nul
 )
-
-REM Copy presets folder into py_version folder
-echo Copying presets folder...
-xcopy "presets" "dist\py_version\presets" /E /I /Y >nul
 
 REM Copy README files into py_version folder
 echo Copying README files...
 for %%F in (README_*.txt) do (
     if exist "%%F" (
+        copy "%%F" "dist\MakeKing\"
         copy "%%F" "dist\py_version\"
     )
 )
-
 
 REM Zip build
 echo Creating ZIP archive...
 powershell -Command ^
 "Compress-Archive -Path 'dist\MakeKing' -DestinationPath 'dist\MakeKing.zip' -Force"
+
 if %ERRORLEVEL% NEQ 0 (
     echo ZIP creation FAILED.
 ) else (

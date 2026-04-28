@@ -7,6 +7,7 @@ import copy
 import os
 import math
 from game_common import *
+import asyncio
 
 # -----------------
 # GLOBAL VARIABLES
@@ -37,14 +38,17 @@ placements = []
 mouse_down_pos = None
 mouse_down_index = None
 mouse_down_time = 0
+scrolled = False
+running = True
 
 # SPRITES
-BASE_ENEMY = None
-ENEMY_SPRITES = {}
-TILE_SPRITES = {}
-FLOOR_SPRITES = {}
-SHAPE_SPRITES = {}
-ARROW_SPRITE = None
+SPRITE_CACHE = {}
+
+#LEVELS
+LEVELS = []
+LEVEL_MENU_OPEN = False
+LEVEL_SCROLL = 0
+LEVEL_SCROLL_SPEED = 30
 
 # ANIMATIONS
 wind_animations = []  # List of (from_pos, to_pos, entity, start_time, duration)
@@ -62,12 +66,13 @@ input_handler = None
 class Renderer:
     def __init__(self, width, height, title):
         pygame.init()
+        pygame.mixer.quit()  # Disable sound to prevent audio lag on some systems
         self.screen = pygame.display.set_mode((width, height))
         pygame.display.set_caption(title)
 
         # fonts belong to rendering layer
-        self.font = pygame.font.SysFont(None, 26)
-        self.big_font = pygame.font.SysFont(None, 40, bold=True)
+        self.font = pygame.font.Font(None, 26)
+        self.big_font = pygame.font.Font(None, 40)
 
     def clear(self, color): 
         self.screen.fill(color)
@@ -136,6 +141,7 @@ class InputHandler:
         self.mouse_down = False
         self.mouse_up = False
         self.mouse_motion = False
+        self.scrolled = False
 
         for e in self.events:
             if e.type == pygame.MOUSEBUTTONDOWN:
@@ -144,10 +150,15 @@ class InputHandler:
                 self.mouse_down_time = self.time()
 
             elif e.type == pygame.MOUSEBUTTONUP:
+                self.mouse_down = False
                 self.mouse_up = True
 
             elif e.type == pygame.MOUSEMOTION:
                 self.mouse_motion = True
+            
+            elif e.type == pygame.MOUSEWHEEL:
+                self.mouse_down = False
+                self.scrolled = True
                 
     def time(self):
         return pygame.time.get_ticks()
@@ -162,7 +173,9 @@ class InputHandler:
         return self.events
 
     def is_click(self):
-        """Returns True if the mouse up was a tap (not a drag)"""
+        if self.scrolled:
+            return False
+
         if self.mouse_down_pos and self.mouse_up:
             dt = self.time() - self.mouse_down_time
             dx = abs(self.mouse_pos_value[0] - self.mouse_down_pos[0])
@@ -205,6 +218,14 @@ class InputHandler:
             return 'load'
         elif save_btn_rect and save_btn_rect.collidepoint(mx, my):
             return 'save'
+        return None
+
+    def get_level_button_at_position(self, pos, level_buttons):
+        """Returns level index if position is over a level button, None otherwise"""
+        mx, my = pos
+        for i, rect in enumerate(level_buttons):
+            if rect.collidepoint(mx, my):
+                return i
         return None
 
     def handle_mouse_down(self):
@@ -334,7 +355,6 @@ def load_preset_path(path):
 def load_preset(filename):
     return load_preset_path(get_preset_path(filename))
 
-
 def prompt_load_preset():
     try:
         import tkinter as tk
@@ -390,44 +410,34 @@ def lighten(color, f):
     )
 
 def load_sprite(sprite_name, size = CELL_SIZE):
-    base = pygame.image.load(resource_path(f"sprites/{sprite_name}.png")).convert_alpha()  
+    if sprite_name in SPRITE_CACHE:
+        return SPRITE_CACHE[sprite_name]
+    path = f"assets/sprites/{sprite_name}.png"
+     # Check file exists first
+    if not os.path.exists(path):
+        print(f"[WARN] Missing sprite: {path}")
+        return missing_texture(int(size))  # Return a fallback surface
+    base = pygame.image.load(path).convert_alpha()  
     size = int(size)
-    return pygame.transform.smoothscale(base, (size, size))
+    img = pygame.transform.smoothscale(base, (size, size))
+    SPRITE_CACHE[sprite_name] = img
+    return img
 
-def load_floor_sprites():
-    global FLOOR_SPRITES
-    FLOOR_SPRITES["active"] = load_sprite("floor_active")
-    FLOOR_SPRITES["inactive"] = load_sprite("floor_inactive")
-
-def load_arrow_sprite():
-    global ARROW_SPRITE
-    ARROW_SPRITE = load_sprite("arrow", size= 50)
-
-def load_shape_sprites():
-    global SHAPE_SPRITES
-    for element in ELEMENTS:
-        if element != "rock":
-            SHAPE_SPRITES[element] = load_sprite("shape_" + element, size = 15)
-
-def load_tile_sprites():
-    global TILE_SPRITES
-    TILE_SPRITES["active"] = load_sprite("tile_active")
-    for element in ELEMENTS:
-        if element != "rock":
-            TILE_SPRITES[element] = load_sprite("tile_" + element)
-
-def load_enemy_sprites( ):
-    global BASE_ENEMY
-    for element in ELEMENTS:
-        if element != "wind":
-            ENEMY_SPRITES[element] = load_sprite( "enemy_" + element)
+def missing_texture(size):
+    surf = pygame.Surface((size, size))
+    surf.fill((255, 0, 255))  # bright magenta = easy debug
+    return surf
 
 def preload_sprites():
-    load_tile_sprites()
-    load_enemy_sprites()
-    load_floor_sprites()
-    load_shape_sprites()
-    load_arrow_sprite()
+    for e in ELEMENTS:
+        load_sprite("enemy_" + e)
+        load_sprite("tile_" + e)
+        load_sprite("shape_" + e, size=15)   
+
+    load_sprite("floor_active")
+    load_sprite("floor_inactive")
+    load_sprite("tile_active")
+    load_sprite("arrow", size=20)
         
 # -----------------
 # HELPERS
@@ -597,7 +607,7 @@ def draw_board(renderer):
 
             entity = board[y][x]
             
-            floor_sprite = FLOOR_SPRITES.get("active" if not entity or entity.active else "inactive")
+            floor_sprite =  load_sprite("floor_" + ("active" if not entity or entity.active else "inactive"))
            
             if floor_sprite:
                 sprite_rect = floor_sprite.get_rect(center=rect.center)
@@ -607,16 +617,16 @@ def draw_board(renderer):
                 continue
 
             if entity.kind == "enemy":
-                sprite = ENEMY_SPRITES.get(entity.element)
+                sprite = load_sprite("enemy_" + entity.element)
                 if sprite:
                     sprite_rect = sprite.get_rect(center=rect.center)
                     renderer.blit(sprite, sprite_rect)
 
             elif entity.kind == "symbol":
                 if entity.active:
-                    sprite = TILE_SPRITES.get("active")
+                    sprite = load_sprite("tile_active")
                 else:
-                    sprite = TILE_SPRITES.get(entity.element)
+                    sprite = load_sprite("tile_" + entity.element)
                 if sprite:
                     sprite_rect = sprite.get_rect(center=rect.center)
                     renderer.blit(sprite, sprite_rect)
@@ -666,8 +676,7 @@ def draw_hand(renderer):
         renderer.draw_rect(BLACK, rect, 2)
 
         color = ELEMENT_COLORS.get(shape.element, GRAY)
-        shape_sprite = SHAPE_SPRITES.get(shape.element)
-        
+        shape_sprite = load_sprite("shape_" + shape.element, size=15)
 
         min_x = min(p[0] for p in shape.pattern)
         min_y = min(p[1] for p in shape.pattern)
@@ -700,7 +709,8 @@ def draw_hand(renderer):
             angle = (math.atan2(dy, dx) * 180 / math.pi) - 270
             
             # Rotate arrow sprite
-            rotated_arrow = pygame.transform.rotate(ARROW_SPRITE, -angle)
+            arrow_sprite = load_sprite("arrow", size=20)
+            rotated_arrow = pygame.transform.rotate(arrow_sprite, -angle)
             arrow_rect = rotated_arrow.get_rect(center=(cx, cy))
             renderer.blit(rotated_arrow, arrow_rect)
 # -----------------
@@ -727,11 +737,11 @@ def draw_button(renderer):
 def draw_load_button(renderer):
     rect = renderer.create_rect(20, HAND_Y + 90, 80, 45)
     presets = get_preset_files()
-    color = GREEN if presets else GRAY
+    color = BLUE if presets else GRAY
 
     renderer.draw_rect(color, rect, radius=8)
     renderer.draw_rect(BLACK, rect, 2, radius=8)
-    renderer.text("LOAD", BLACK, center=rect.center)
+    renderer.text("LEVELS", BLACK, center=rect.center)
 
     return rect
 
@@ -752,6 +762,65 @@ def draw_status_message(renderer):
         renderer.text(SAVE_MESSAGE, WHITE, center=(WIDTH//2, HAND_Y - 30))
     else:
         SAVE_MESSAGE = ""
+
+def draw_level_menu(renderer, input_handler):
+    global LEVEL_MENU_OPEN, LEVEL_SCROLL
+    if not LEVEL_MENU_OPEN:
+        return
+
+    height = GRID_SIZE*CELL_SIZE + CARD_H + 20
+
+    menu_rect = pygame.Rect(0, 0, WIDTH, height)
+
+    renderer.overlay((WIDTH, height), 200, (0, 0, 0))
+    renderer.screen.set_clip(menu_rect)
+    renderer.text("Select Level", WHITE, center=(WIDTH//2, 60), big=True)
+
+    mx, my = input_handler.mouse_pos()
+
+    start_y = 120
+    button_h = 40
+    button_w = 300
+    spacing = button_h + 10
+
+    # scroll input (mouse wheel)
+    for e in input_handler.get_events():
+        if e.type == pygame.MOUSEWHEEL:
+            LEVEL_SCROLL -= e.y * LEVEL_SCROLL_SPEED
+
+    # clamp scroll
+    max_scroll = max(0, len(LEVELS) * spacing - (height - start_y - 50))
+    LEVEL_SCROLL = max(0, min(LEVEL_SCROLL, max_scroll))
+
+    # visible range only (this is the key improvement)
+    visible_top = start_y - LEVEL_SCROLL
+    visible_bottom = height
+
+    for i, (name, path) in enumerate(LEVELS):
+        y = start_y + i * spacing - LEVEL_SCROLL
+
+        rect = pygame.Rect(
+            WIDTH//2 - button_w//2,
+            y,
+            button_w,
+            button_h
+        )
+
+        # skip drawing off-screen buttons (performance + cleaner)
+        if rect.bottom < visible_top or rect.top > visible_bottom:
+            continue
+
+        hover = rect.collidepoint(mx, my)
+        color = (80, 80, 80) if not hover else (120, 120, 120)
+
+        renderer.draw_rect(color, rect, radius=6)
+        renderer.draw_rect(BLACK, rect, 2, radius=6)
+        renderer.text(name, WHITE, center=rect.center)
+
+        if input_handler.mouse_down and rect.collidepoint(mx, my):
+            load_preset(path)
+            LEVEL_MENU_OPEN = False
+    renderer.screen.set_clip(None)
 
 # -----------------
 # GAME LOGIC
@@ -868,12 +937,12 @@ def update_and_draw_wind_animations(renderer):
             )
             
             if entity.kind == "enemy":
-                sprite = ENEMY_SPRITES.get(entity.element)
+                sprite = load_sprite("enemy_" + entity.element)
                 if sprite:
                     sprite_rect = sprite.get_rect(center=rect.center)
                     renderer.blit(sprite, sprite_rect)
             elif entity.kind == "symbol":
-                sprite = TILE_SPRITES.get(entity.element)
+                sprite = load_sprite("tile_" + entity.element)
                 if sprite:
                     sprite_rect = sprite.get_rect(center=rect.center)
                     renderer.blit(sprite, sprite_rect)
@@ -896,108 +965,132 @@ def check_win():
 # -----------------
 # MAIN LOOP
 # -----------------
+async def main():
+    global dragging
+    global mouse_down_pos
+    global mouse_down_index
+    global dragging_index
+    global game_won
+    global start_entities
+    global turn_count
+    
+    await asyncio.sleep(0)  # Allow time for window to initialize
 
-renderer = Renderer(WIDTH, HEIGHT, "Puzzle Prototype")
-input_handler = InputHandler()
+    renderer = Renderer(WIDTH, HEIGHT, "Puzzle Prototype")
+    input_handler = InputHandler()
 
-start_new_game()
-preload_sprites()
+    await asyncio.sleep(0.016)
+    preload_sprites()
+    global  LEVELS
+    LEVELS = preload_levels()
+    
+    start_new_game()
 
-while True:
-    input_handler.update()
+    running = True
+    while running:
+        input_handler.update()
 
-    if input_handler.quit_requested():
-        pygame.quit()
-        sys.exit()
+        if input_handler.quit_requested():
+            #pygame.quit()
+            #sys.exit()
+            running = False
 
-    renderer.clear(BLACK)
-
-    draw_board(renderer)
-    draw_placements(renderer)
-    draw_ghost(renderer, input_handler)
-    draw_hand(renderer)
-    update_and_draw_wind_animations(renderer)
-
-    # -----------------
-    # WIN STATE
-    # -----------------
-    if check_win():
-        game_won = True
-        score = (start_entities / turn_count) if turn_count else 0
-
-        renderer.overlay((WIDTH, HEIGHT), 180, (0, 0, 0))
-
-        renderer.text("VICTORY!", GREEN,
-                      center=(WIDTH//2, HEIGHT//2 - 160), big=True)
-
-        renderer.text(f"Score: {score:.2f}", WHITE,
-                      center=(WIDTH//2, HEIGHT//2 - 80), big=True)
-
-    btn = draw_button(renderer)
-    load_btn = draw_load_button(renderer)
-    save_btn = draw_save_button(renderer) if game_won and not is_executable() else None
-    draw_status_message(renderer)
-
-    # -----------------
-    # INPUT HANDLING
-    # -----------------
-    mx, my = input_handler.mouse_pos()
-
-    if input_handler.mouse_down:
-        # Try to pick up a card
-        card_index = input_handler.handle_mouse_down()
-        if card_index is not None:
-            dragging = hand[card_index]
-            dragging_index = card_index
-            mouse_down_pos = (mx, my)
-            mouse_down_index = card_index
-            mouse_down_time = input_handler.time()
+        renderer.clear(BLACK)
+        draw_board(renderer)
+        draw_placements(renderer)
+        draw_ghost(renderer, input_handler)
+        draw_hand(renderer)
+        update_and_draw_wind_animations(renderer)
         
-        # Try to remove a placement
-        placement_index = input_handler.get_placement_at_position((mx, my))
-        if placement_index is not None:
-            _, _, card_index = placements[placement_index]
-            placements.pop(placement_index)
-            used_indices.discard(card_index)
+        draw_level_menu(renderer, input_handler)
+
+        # -----------------
+        # WIN STATE
+        # -----------------
+        if check_win():
+            game_won = True
+            score = (start_entities / turn_count) if turn_count else 0
+
+            renderer.overlay((WIDTH, HEIGHT), 180, (0, 0, 0))
+
+            renderer.text("VICTORY!", GREEN,
+                        center=(WIDTH//2, HEIGHT//2 - 160), big=True)
+
+            renderer.text(f"Score: {score:.2f}", WHITE,
+                        center=(WIDTH//2, HEIGHT//2 - 80), big=True)
+
+        btn = draw_button(renderer)
+        load_btn = draw_load_button(renderer)
+        save_btn = draw_save_button(renderer) if game_won and not is_executable() else None
+        draw_status_message(renderer)
+
+        # -----------------
+        # INPUT HANDLING
+        # -----------------
+        mx, my = input_handler.mouse_pos()
+
+        if input_handler.mouse_down:
+            # Try to pick up a card
+            card_index = input_handler.handle_mouse_down()
+            if card_index is not None:
+                dragging = hand[card_index]
+                dragging_index = card_index
+                mouse_down_pos = (mx, my)
+                mouse_down_index = card_index
+                mouse_down_time = input_handler.time()
+            
+            # Try to remove a placement
+            placement_index = input_handler.get_placement_at_position((mx, my))
+            if placement_index is not None:
+                _, _, card_index = placements[placement_index]
+                placements.pop(placement_index)
+                used_indices.discard(card_index)
+            
+            # Check button clicks
+            button_clicked = input_handler.get_button_at_position((mx, my), btn, load_btn, save_btn)
+            if button_clicked == 'main':
+                if game_won:
+                    turn_count = score = start_entities = 0
+                    placements.clear()
+                    start_new_game()
+                    used_indices.clear()
+                    game_won = False
+                elif not wind_animations and not resolving:  # Only allow resolve if animations aren't running
+                    resolve()
+            elif button_clicked == 'load':
+                global LEVEL_MENU_OPEN
+                LEVEL_MENU_OPEN = not LEVEL_MENU_OPEN
+            elif button_clicked == 'save':
+                save_preset()
+
         
-        # Check button clicks
-        button_clicked = input_handler.get_button_at_position((mx, my), btn, load_btn, save_btn)
-        if button_clicked == 'main':
-            if game_won:
-                turn_count = score = start_entities = 0
-                placements.clear()
-                start_new_game()
-                used_indices.clear()
-                game_won = False
-            elif not wind_animations and not resolving:  # Only allow resolve if animations aren't running
-                resolve()
-        elif button_clicked == 'load':
-            prompt_load_preset()
-        elif button_clicked == 'save':
-            save_preset()
 
-    # Handle drag detection
-    if input_handler.handle_drag() and dragging and mouse_down_index is not None:
-        mouse_down_index = None
+        # Handle drag detection
+        if input_handler.handle_drag() and dragging and mouse_down_index is not None:
+            mouse_down_index = None
 
-    # Handle release
-    if input_handler.mouse_up and dragging:
-        if input_handler.is_click() and mouse_down_index is not None:
-            # Rotate card on click
-            shape = hand[mouse_down_index]
-            shape.pattern = rotate(shape.pattern)
-            if shape.element == "wind" and shape.direction:
-                dx, dy = shape.direction
-                shape.direction = (-dy, dx)
-        else:
-            # Try to place card on drag
-            gx, gy = mx // CELL_SIZE, my // CELL_SIZE
-            if is_valid(dragging, (gx, gy)):
-                placements.append((dragging, (gx, gy), dragging_index))
-                used_indices.add(dragging_index)
-        
-        dragging = dragging_index = None
-        mouse_down_pos = None
-        mouse_down_index = None
+        # Handle release
+        if input_handler.mouse_up and dragging:
+            if input_handler.is_click() and mouse_down_index is not None:
+                # Rotate card on click
+                shape = hand[mouse_down_index]
+                shape.pattern = rotate(shape.pattern)
+                if shape.element == "wind" and shape.direction:
+                    dx, dy = shape.direction
+                    shape.direction = (-dy, dx)
+            else:
+                # Try to place card on drag
+                gx, gy = mx // CELL_SIZE, my // CELL_SIZE
+                if is_valid(dragging, (gx, gy)):
+                    placements.append((dragging, (gx, gy), dragging_index))
+                    used_indices.add(dragging_index)
+            
+            dragging = dragging_index = None
+            mouse_down_pos = None
+            mouse_down_index = None
 
-    renderer.present()
+        renderer.present()
+        await asyncio.sleep(0.016)
+
+if __name__ == "__main__":
+    asyncio.run(main())
