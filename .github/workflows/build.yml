@@ -103,7 +103,7 @@ jobs:
           --noconsole \
           --name MakeKing \
           --icon=sprites/icon.png \
-          --add-data "sprites:sprites" \
+          --add-data "Sprites:Sprites" \
           --noupx \
           MakeKing.py
 
