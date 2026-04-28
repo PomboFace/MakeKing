@@ -2,18 +2,39 @@ name: Build MakeKing
 
 on:
   workflow_dispatch:
-    inputs:
-      preset:
-        description: "Preset folder"
-        required: true
-        default: "default"
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build:
+    strategy:
+      matrix:
+        include:
+          - os: windows-latest
+            platform: windows
+            zip_name: MakeKing-windows.zip
+
+          - os: ubuntu-latest
+            platform: linux
+            zip_name: MakeKing-linux.zip
+
+    runs-on: ${{ matrix.os }}
 
     steps:
-      - uses: actions/checkout@v4
+      # ============================
+      # CHECKOUT
+      # ============================
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ============================
+      # PYTHON
+      # ============================
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -21,26 +42,153 @@ jobs:
           python-version: "3.11"
 
       - name: Install dependencies
-        run: pip install pyinstaller pygame
+        run: |
+          pip install pyinstaller pygame
 
-      - name: Build
+      # ============================
+      # CLEAN PREVIOUS BUILDS
+      # ============================
+
+      - name: Clean previous builds (Windows)
+        if: matrix.platform == 'windows'
+        shell: cmd
+        run: |
+          echo ============================
+          echo   Building MakeKing (Safe)
+          echo ============================
+
+          rmdir /s /q build
+          rmdir /s /q dist
+
+          if exist MakeKing.spec del MakeKing.spec
+
+      - name: Clean previous builds (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          echo "============================"
+          echo "  Building MakeKing (Safe)"
+          echo "============================"
+
+          rm -rf build
+          rm -rf dist
+          rm -f MakeKing.spec
+
+      # ============================
+      # BUILD WINDOWS
+      # ============================
+
+      - name: Build with PyInstaller (Windows)
+        if: matrix.platform == 'windows'
         shell: cmd
         run: |
           pyinstaller ^
+          -y ^
           --noconsole ^
           --name MakeKing ^
           --icon=sprites\icon.ico ^
           --add-data "sprites;sprites" ^
+          --version-file version.txt ^
           --noupx ^
           MakeKing.py
 
-      - name: Copy selected preset
+      # ============================
+      # BUILD LINUX
+      # ============================
+
+      - name: Build with PyInstaller (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          pyinstaller \
+          -y \
+          --noconsole \
+          --name MakeKing \
+          --icon=sprites/icon.png \
+          --add-data "Sprites:Sprites" \
+          --noupx \
+          MakeKing.py
+
+      # ============================
+      # COPY README FILES
+      # ============================
+
+      - name: Copy README files (Windows)
+        if: matrix.platform == 'windows'
         shell: cmd
         run: |
-          xcopy "presets\${{ github.event.inputs.preset }}" "dist\MakeKing\presets" /E /I /Y
+          echo Copying README files...
 
-      - name: Upload artifact
+          for %%F in (README_*.txt) do (
+              if exist "%%F" (
+                  copy "%%F" "dist\MakeKing\"
+              )
+          )
+
+      - name: Copy README files (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          echo "Copying README files..."
+          cp README_*.txt dist/MakeKing/ || true
+
+      # ============================
+      # COPY PRESETS
+      # ============================
+
+      - name: Copy presets folder (Windows)
+        if: matrix.platform == 'windows'
+        shell: cmd
+        run: |
+          echo Copying presets folder...
+          xcopy "presets" "dist\MakeKing\presets" /E /I /Y >nul
+
+      - name: Copy presets folder (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          echo "Copying presets folder..."
+          cp -r presets dist/MakeKing/presets
+
+      # ============================
+      # ZIP WINDOWS
+      # ============================
+
+      - name: Create ZIP (Windows)
+        if: matrix.platform == 'windows'
+        shell: powershell
+        run: |
+          Compress-Archive `
+            -Path 'dist\MakeKing' `
+            -DestinationPath 'dist\MakeKing-windows.zip' `
+            -Force
+
+      # ============================
+      # ZIP LINUX
+      # ============================
+
+      - name: Create ZIP (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          cd dist
+          zip -r MakeKing-linux.zip MakeKing
+
+      # ============================
+      # UPLOAD ARTIFACT
+      # ============================
+
+      - name: Upload build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MakeKing-Windows
-          path: dist/MakeKing
+          name: MakeKing-${{ matrix.platform }}
+          path: dist/${{ matrix.zip_name }}
+
+      # ============================
+      # RELEASE
+      # ============================
+
+      - name: Release build
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: latest
+          name: Latest Build
+          files: dist/${{ matrix.zip_name }}
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
