@@ -1,0 +1,168 @@
+import json
+import os
+import tkinter as tk
+from tkinter import filedialog, ttk, messagebox
+
+
+class LevelEditor:
+
+    def __init__(self, root):
+
+        self.root = root
+        self.root.title("Level Difficulty Editor")
+
+        self.files = []
+        self.data = {}
+
+        # ----------------------------
+        # UI Layout
+        # ----------------------------
+
+        top_frame = tk.Frame(root)
+        top_frame.pack(fill="x", padx=10, pady=5)
+
+        tk.Button(
+            top_frame,
+            text="Load JSON Files",
+            command=self.load_files
+        ).pack(side="left")
+
+        tk.Button(
+            top_frame,
+            text="Save All",
+            command=self.save_all
+        ).pack(side="left", padx=10)
+
+        # table
+        self.tree = ttk.Treeview(
+            root,
+            columns=("file", "difficulty"),
+            show="headings",
+            height=20
+        )
+
+        self.tree.heading("file", text="File")
+        self.tree.heading("difficulty", text="Difficulty")
+
+        self.tree.column("file", width=400)
+        self.tree.column("difficulty", width=120)
+
+        self.tree.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # editing
+        self.tree.bind("<Double-1>", self.edit_cell)
+
+    # ----------------------------
+    # Load files
+    # ----------------------------
+
+    def load_files(self):
+
+        paths = filedialog.askopenfilenames(
+            filetypes=[("JSON files", "*.json")]
+        )
+
+        if not paths:
+            return
+
+        self.files = list(paths)
+        self.data = {}
+
+        self.tree.delete(*self.tree.get_children())
+
+        for path in self.files:
+
+            with open(path, "r") as f:
+                content = json.load(f)
+
+            # ensure difficulty exists
+            if "difficulty" not in content:
+                content["difficulty"] = 0
+
+            self.data[path] = content
+
+            self.tree.insert(
+                "",
+                "end",
+                values=(os.path.basename(path), content["difficulty"])
+            )
+
+    # ----------------------------
+    # Inline edit
+    # ----------------------------
+
+    def edit_cell(self, event):
+
+        item = self.tree.selection()[0]
+        col = self.tree.identify_column(event.x)
+
+        if col != "#2":  # difficulty column only
+            return
+
+        x, y, width, height = self.tree.bbox(item, col)
+
+        entry = tk.Entry(self.root)
+        entry.place(x=int(x) + self.tree.winfo_rootx(),
+                    y=int(y) + self.tree.winfo_rooty(),
+                    width=int(width),
+                    height=int(height))
+
+        old_value = self.tree.item(item, "values")[1]
+        entry.insert(0, old_value)
+        entry.focus()
+
+        def save_edit(event=None):
+
+            new_value = entry.get()
+
+            try:
+                new_value = int(new_value)
+            except:
+                messagebox.showerror("Error", "Difficulty must be a number")
+                entry.destroy()
+                return
+
+            filename = self.tree.item(item, "values")[0]
+
+            # update UI
+            self.tree.item(item, values=(filename, new_value))
+
+            # update internal data
+            for path in self.files:
+
+                if os.path.basename(path) == filename:
+
+                    self.data[path]["difficulty"] = new_value
+
+            entry.destroy()
+
+        entry.bind("<Return>", save_edit)
+        entry.bind("<FocusOut>", save_edit)
+
+    # ----------------------------
+    # Save back to JSON
+    # ----------------------------
+
+    def save_all(self):
+
+        for path, content in self.data.items():
+
+            # ensure difficulty exists
+            if "difficulty" not in content:
+                content["difficulty"] = 0
+
+            with open(path, "w") as f:
+                json.dump(content, f, indent=2)
+
+        messagebox.showinfo("Saved", "All files updated successfully!")
+
+
+# ----------------------------
+# Run app
+# ----------------------------
+
+if __name__ == "__main__":
+
+    root = tk.Tk()
+    app = LevelEditor(root)
+    root.mainloop()
