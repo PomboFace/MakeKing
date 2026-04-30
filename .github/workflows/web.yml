@@ -28,6 +28,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: 'pip'
 
       - name: Install dependencies
         run: |
@@ -35,12 +36,24 @@ jobs:
 
       - name: Build web version
         run: |
-          pygbag --build MakeKing.py
-
+          pygbag --build MakeKing.py --ume_block=0
+          
+      - name: Verify build output
+        run: |
+          if [ ! -d "build/web" ]; then
+            echo "Web build failed!"
+            exit 1
+          fi
+          
       - name: Prepare Pages artifact
         run: |
-          mkdir pages
+          mkdir -p pages
           cp -r build/web/* pages/
+      
+          # Ensure assets are included
+          if [ -d "assets" ]; then
+            cp -r assets pages/assets
+          fi
 
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
