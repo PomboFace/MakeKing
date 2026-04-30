@@ -140,11 +140,13 @@ jobs:
           echo Copying assets folder...
           xcopy "assets" "dist\MakeKing\assets" /E /I /Y >nul
 
-      - name: Copy presets folder (Linux)
+      - name: Copy assets folder (Linux)
         if: matrix.platform == 'linux'
         run: |
           echo "Copying assets folder..."
-          cp -r assets/* dist/MakeKing/assets
+          rm -rf dist/MakeKing/assets
+          mkdir -p dist/MakeKing
+          cp -r assets dist/MakeKing/
 
       # ============================
       # ZIP WINDOWS
