@@ -6,6 +6,8 @@ import datetime
 import copy
 import os
 import math
+
+import re
 from game_common import *
 import asyncio
 
@@ -49,6 +51,7 @@ LEVELS = []
 LEVEL_MENU_OPEN = False
 LEVEL_SCROLL = 0
 LEVEL_SCROLL_SPEED = 30
+CURRENT_LEVEL = None
 
 # ANIMATIONS
 wind_animations = []  # List of (from_pos, to_pos, entity, start_time, duration)
@@ -209,7 +212,7 @@ class InputHandler:
                 return i
         return None
 
-    def get_button_at_position(self, pos, btn_rect, load_btn_rect, save_btn_rect=None):
+    def get_button_at_position(self, pos, btn_rect, load_btn_rect, save_btn_rect=None, next_btn_rect=None):
         """Returns which button was clicked: 'main', 'load', 'save', or None"""
         mx, my = pos
         if btn_rect.collidepoint(mx, my):
@@ -218,6 +221,8 @@ class InputHandler:
             return 'load'
         elif save_btn_rect and save_btn_rect.collidepoint(mx, my):
             return 'save'
+        elif next_btn_rect and next_btn_rect.collidepoint(mx, my):
+            return 'next'
         return None
 
     def get_level_button_at_position(self, pos, level_buttons):
@@ -329,6 +334,7 @@ def save_preset(name=None):
 
 
 def load_preset_path(path):
+    global CURRENT_LEVEL
     if not os.path.exists(path):
         set_status_message("Preset not found")
         return False
@@ -347,6 +353,8 @@ def load_preset_path(path):
     used_indices.clear()
     game_won = False
     capture_initial_state()
+    match = re.search(r'\d+', path)
+    CURRENT_LEVEL = int(match.group()) if match else None
 
     set_status_message(f"Loaded preset: {os.path.basename(path)}")
     return True
@@ -355,36 +363,15 @@ def load_preset_path(path):
 def load_preset(filename):
     return load_preset_path(get_preset_path(filename))
 
-def prompt_load_preset():
-    try:
-        import tkinter as tk
-        from tkinter import filedialog
-    except ImportError:
-        set_status_message("Tkinter unavailable")
+def load_next_preset():
+    global CURRENT_LEVEL
+    if CURRENT_LEVEL is None:
+        set_status_message("No current level, cannot load next")
         return False
-
-    root = tk.Tk()
-    root.withdraw()
-    initial_dir = ensure_preset_dir()
-    path = filedialog.askopenfilename(
-        title="Select preset to load",
-        initialdir=initial_dir,
-        filetypes=[("JSON preset", "*.json"), ("All files", "*")],
-    )
-    root.destroy()
-
-    if not path:
-        return False
-
-    return load_preset_path(path)
+    next_level = (CURRENT_LEVEL + 1) % len(LEVELS) # type: ignore
+    load_preset(f"preset_{next_level:02d}.json")
 
 
-def load_latest_preset():
-    presets = get_preset_files()
-    if not presets:
-        set_status_message("No presets available")
-        return False
-    return load_preset(presets[0])
 
 # -----------------
 # SPRITES
@@ -745,6 +732,16 @@ def draw_load_button(renderer):
 
     return rect
 
+def draw_next_button(renderer):
+    rect = renderer.create_rect(CELL_SIZE*4 - 80 -20, HAND_Y + 90, 80, 45)
+    color = BLUE if CURRENT_LEVEL is not None else GRAY
+
+    renderer.draw_rect(color, rect, radius=8)
+    renderer.draw_rect(BLACK, rect, 2, radius=8)
+    renderer.text("NXT LVL", BLACK, center=rect.center)
+
+    return rect
+
 
 def draw_save_button(renderer):
     rect = renderer.create_rect(10, 10, 60, 35)
@@ -973,6 +970,7 @@ async def main():
     global game_won
     global start_entities
     global turn_count
+    global renderer, input_handler
     
     await asyncio.sleep(0)  # Allow time for window to initialize
 
@@ -1021,6 +1019,7 @@ async def main():
 
         btn = draw_button(renderer)
         load_btn = draw_load_button(renderer)
+        next_btn = draw_next_button(renderer) if game_won and CURRENT_LEVEL is not None else None
         save_btn = draw_save_button(renderer) if game_won and not is_executable() else None
         draw_status_message(renderer)
 
@@ -1047,7 +1046,7 @@ async def main():
                 used_indices.discard(card_index)
             
             # Check button clicks
-            button_clicked = input_handler.get_button_at_position((mx, my), btn, load_btn, save_btn)
+            button_clicked = input_handler.get_button_at_position((mx, my), btn, load_btn, save_btn, next_btn)
             if button_clicked == 'main':
                 if game_won:
                     turn_count = score = start_entities = 0
@@ -1060,10 +1059,10 @@ async def main():
             elif button_clicked == 'load':
                 global LEVEL_MENU_OPEN
                 LEVEL_MENU_OPEN = not LEVEL_MENU_OPEN
+            elif button_clicked == 'next':
+                load_next_preset()
             elif button_clicked == 'save':
-                save_preset()
-
-        
+                save_preset()   
 
         # Handle drag detection
         if input_handler.handle_drag() and dragging and mouse_down_index is not None:

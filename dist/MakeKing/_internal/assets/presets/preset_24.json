@@ -1,0 +1,134 @@
+{
+  "board": [
+    [
+      {
+        "kind": "symbol",
+        "element": "water",
+        "immovable": true,
+        "active": false
+      },
+      null,
+      null,
+      null
+    ],
+    [
+      null,
+      null,
+      null,
+      null
+    ],
+    [
+      null,
+      null,
+      {
+        "kind": "enemy",
+        "element": "water",
+        "immovable": false,
+        "active": false
+      },
+      null
+    ],
+    [
+      {
+        "kind": "symbol",
+        "element": "fire",
+        "immovable": true,
+        "active": false
+      },
+      {
+        "kind": "enemy",
+        "element": "rock",
+        "immovable": true,
+        "active": false
+      },
+      null,
+      null
+    ]
+  ],
+  "hand": [
+    {
+      "pattern": [
+        [
+          0,
+          0
+        ],
+        [
+          -1,
+          0
+        ],
+        [
+          -2,
+          0
+        ],
+        [
+          -3,
+          0
+        ]
+      ],
+      "element": "fire",
+      "direction": null
+    },
+    {
+      "pattern": [
+        [
+          0,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          0,
+          2
+        ],
+        [
+          1,
+          2
+        ]
+      ],
+      "element": "water",
+      "direction": null
+    },
+    {
+      "pattern": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "element": "wind",
+      "direction": [
+        0,
+        1
+      ]
+    },
+    {
+      "pattern": [
+        [
+          0,
+          0
+        ],
+        [
+          1,
+          0
+        ],
+        [
+          0,
+          1
+        ],
+        [
+          1,
+          1
+        ]
+      ],
+      "element": "water",
+      "direction": null
+    }
+  ],
+  "difficulty": 2
+}
