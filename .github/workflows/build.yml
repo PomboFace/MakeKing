@@ -85,7 +85,7 @@ jobs:
           -y ^
           --noconsole ^
           --name MakeKing ^
-          --icon=sprites\icon.ico ^
+          --icon=assets\sprites\icon.ico ^
           --add-data "assets;assets" ^
           --version-file version.txt ^
           --noupx ^
@@ -102,7 +102,7 @@ jobs:
           -y \
           --noconsole \
           --name MakeKing \
-          --icon=sprites/icon.png \
+          --icon=assets/sprites/icon.png \
           --add-data "assets:assets" \
           --noupx \
           MakeKing.py
