@@ -133,18 +133,18 @@ jobs:
       # COPY ASSETS
       # ============================
 
-      - name: Copy presets folder (Windows)
+      - name: Copy assets folder (Windows)
         if: matrix.platform == 'windows'
         shell: cmd
         run: |
           echo Copying assets folder...
-          xcopy "presets" "dist\MakeKing\assets" /E /I /Y >nul
+          xcopy "assets" "dist\MakeKing\assets" /E /I /Y >nul
 
       - name: Copy presets folder (Linux)
         if: matrix.platform == 'linux'
         run: |
           echo "Copying assets folder..."
-          cp -r presets dist/MakeKing/assets
+          cp -r assets/* dist/MakeKing/assets
 
       # ============================
       # ZIP WINDOWS
